@@ -375,3 +375,6 @@
 [submodule "contrib/pulsar-client-cpp"]
 	path = contrib/pulsar-client-cpp
 	url = https://github.com/SteveBalayanAKAMedian/pulsar-client-cpp.git
+[submodule "contrib/blazingmq"]
+	path = contrib/blazingmq
+	url = https://github.com/bloomberg/blazingmq.git
