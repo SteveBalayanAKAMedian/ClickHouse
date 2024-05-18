@@ -115,6 +115,9 @@ if (TARGET ch_contrib::pulsar)
     add_headers_and_sources(dbms Storages/Pulsar)
 endif()
 
+if (TARGET ch_contrib::blazing) 
+    add_headers_and_sources(dbms Storages/Blazing)
+endif()
 
 if (TARGET ch_contrib::nats_io)
     add_headers_and_sources(dbms Storages/NATS)
@@ -407,6 +410,10 @@ endif()
 if (TARGET ch_contrib::nuraft)
     dbms_target_link_libraries(PUBLIC ch_contrib::nuraft)
     target_link_libraries (clickhouse_compression PUBLIC ch_contrib::nuraft)
+endif()
+
+if (TARGET ch_contrib::blazing)
+    dbms_target_link_libraries(PRIVATE ch_contrib::blazing)
 endif()
 
 dbms_target_link_libraries (
