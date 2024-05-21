@@ -378,3 +378,6 @@
 [submodule "contrib/blazingmq"]
 	path = contrib/blazingmq
 	url = https://github.com/bloomberg/blazingmq.git
+[submodule "contrib/bde"]
+	path = contrib/bde
+	url = git@github.com:ClickHouse-contrib-pulsar-bmq/bde.git
