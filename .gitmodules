@@ -381,3 +381,6 @@
 [submodule "contrib/bde"]
 	path = contrib/bde
 	url = git@github.com:ClickHouse-contrib-pulsar-bmq/bde.git
+[submodule "contrib/bde-tools"]
+	path = contrib/bde-tools
+	url = git@github.com:ClickHouse-contrib-pulsar-bmq/bde-tools.git
