@@ -115,6 +115,10 @@ if (TARGET ch_contrib::nats_io)
     add_headers_and_sources(dbms Storages/NATS)
 endif()
 
+if (TARGET ch_contrib::blazingmq)
+    add_headers_and_sources(dbms Storages/BlazingMQ)
+endif()
+
 add_headers_and_sources(dbms Storages/DataLakes)
 add_headers_and_sources(dbms Storages/DataLakes/Iceberg)
 add_headers_and_sources(dbms Common/NamedCollections)
@@ -384,6 +388,10 @@ endif()
 
 if (TARGET ch_contrib::nats_io)
     dbms_target_link_libraries(PRIVATE ch_contrib::nats_io ch_contrib::uv)
+endif()
+
+if (TARGET ch_contrib::blazingmq)
+    dbms_target_link_libraries(PRIVATE ch_contrib::blazingmq)
 endif()
 
 if (TARGET ch_contrib::sasl2)
