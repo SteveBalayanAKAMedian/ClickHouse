@@ -372,3 +372,6 @@
 [submodule "contrib/double-conversion"]
 	path = contrib/double-conversion
 	url = https://github.com/ClickHouse/double-conversion.git
+[submodule "contrib/blazingmq"]
+	path = contrib/blazingmq
+	url = git@github.com:ClickHouse-contrib-pulsar-bmq/blazingmq.git
