@@ -375,3 +375,12 @@
 [submodule "contrib/blazingmq"]
 	path = contrib/blazingmq
 	url = git@github.com:ClickHouse-contrib-pulsar-bmq/blazingmq.git
+[submodule "contrib/bde-tools"]
+	path = contrib/bde-tools
+	url = git@github.com:ClickHouse-contrib-pulsar-bmq/bde-tools.git
+[submodule "contrib/bde"]
+	path = contrib/bde
+	url = git@github.com:ClickHouse-contrib-pulsar-bmq/bde.git
+[submodule "contrib/ntf-core"]
+	path = contrib/ntf-core
+	url = git@github.com:ClickHouse-contrib-pulsar-bmq/ntf-core.git
