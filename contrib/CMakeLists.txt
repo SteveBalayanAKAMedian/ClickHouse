@@ -230,7 +230,6 @@ add_contrib (libssh-cmake libssh)
 
 add_contrib (bde-tools)
 add_contrib (bde-cmake bde)
-
 add_contrib (blazingmq-cmake blazingmq)
 
 
