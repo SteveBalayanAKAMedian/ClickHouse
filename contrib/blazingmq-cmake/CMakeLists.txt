@@ -1,42 +1,38 @@
-option(ENABLE_BMQ "Enable BlazingMQ" ${ENABLE_LIBRARIES})
+option(ENABLE_BLAZING "Enable BlazingMQ" ${ENABLE_LIBRARIES})
 
-if(NOT ENABLE_BMQ)
+if(NOT ENABLE_BLAZING)
     message(STATUS "Not using BlazingMQ")
     return()
 endif()
 
 set(LIBRARY_DIR "${ClickHouse_SOURCE_DIR}/contrib/blazingmq")
 
-# Applications
-file(GLOB_RECURSE APP_SRCS
+file(GLOB_RECURSE SRCS_APP
     "${LIBRARY_DIR}/src/applications/**/*.cpp"
-    "${LIBRARY_DIR}/src/applications/**/*.cc"
-    "${LIBRARY_DIR}/src/applications/**/*.c"
     "${LIBRARY_DIR}/src/applications/**/*.h"
 )
-
-# Groups
-file(GLOB_RECURSE GROUP_SRCS
+file(GLOB_RECURSE SRCS_GROUPS
     "${LIBRARY_DIR}/src/groups/**/*.cpp"
-    "${LIBRARY_DIR}/src/groups/**/*.cc"
-    "${LIBRARY_DIR}/src/groups/**/*.c"
     "${LIBRARY_DIR}/src/groups/**/*.h"
 )
 
-# Include directories for src and include
-include_directories(
-    "${LIBRARY_DIR}/src/applications"
-    "${LIBRARY_DIR}/src/groups"
-    "${LIBRARY_DIR}/include"
-    "${LIBRARY_DIR}/src"
+file(GLOB_RECURSE BMQ_INCLUDE_DIRS 
+    "${LIBRARY_DIR}/src/applications/*"
+    "${LIBRARY_DIR}/src/groups/*"
 )
 
-# Define smaller libraries for applications and groups
-add_library(_blazingmq_apps ${APP_SRCS})
-add_library(_blazingmq_groups ${GROUP_SRCS})
+add_library(_blazing_app STATIC ${SRCS_APP})
+add_library(_blazing_groups STATIC ${SRCS_GROUPS})
 
-# Link dependencies to each sub-library
-target_link_libraries(_blazingmq_apps
+add_library(_blazing INTERFACE)
+add_library(ch_contrib::blazing ALIAS _blazing)
+
+target_link_libraries(_blazing INTERFACE _blazing_app _blazing_groups)
+
+target_include_directories(_blazing_app SYSTEM PUBLIC ${BMQ_INCLUDE_DIRS})
+target_include_directories(_blazing_groups SYSTEM PUBLIC ${BMQ_INCLUDE_DIRS})
+
+target_link_libraries(_blazing_app
   PUBLIC
     boost::headers_only
     boost::system
@@ -48,9 +44,10 @@ target_link_libraries(_blazingmq_apps
     ch_contrib::curl
     ch_contrib::snappy
     ch_contrib::protobuf
+    ch_contrib::bde
 )
 
-target_link_libraries(_blazingmq_groups
+target_link_libraries(_blazing_groups
   PUBLIC
     boost::headers_only
     boost::system
@@ -62,11 +59,5 @@ target_link_libraries(_blazingmq_groups
     ch_contrib::curl
     ch_contrib::snappy
     ch_contrib::protobuf
+    ch_contrib::bde
 )
-
-# Create the main BlazingMQ library by linking the smaller parts
-add_library(_blazingmq INTERFACE)
-target_link_libraries(_blazingmq INTERFACE _blazingmq_apps _blazingmq_groups)
-
-# Create an alias for the BlazingMQ library
-add_library(ch_contrib::blazingmq ALIAS _blazingmq)

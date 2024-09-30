@@ -228,10 +228,9 @@ add_contrib (ulid-c-cmake ulid-c)
 
 add_contrib (libssh-cmake libssh)
 
-add_contrib (bde-tools)
 add_contrib (bde-cmake bde)
+add_contrib (ntf-core-cmake ntf-core)
 add_contrib (blazingmq-cmake blazingmq)
-
 
 # Put all targets defined here and in subdirectories under "contrib/<immediate-subdir>" folders in GUI-based IDEs.
 # Some of third-party projects may override CMAKE_FOLDER or FOLDER property of their targets, so they would not appear

@@ -391,7 +391,7 @@ if (TARGET ch_contrib::nats_io)
 endif()
 
 if (TARGET ch_contrib::blazingmq)
-    dbms_target_link_libraries(PRIVATE ch_contrib::blazingmq)
+    dbms_target_link_libraries(PRIVATE ch_contrib::bde ch_contrib::ntf_core ch_contrib::blazingmq)
 endif()
 
 if (TARGET ch_contrib::sasl2)
