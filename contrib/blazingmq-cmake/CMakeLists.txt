@@ -25,7 +25,7 @@ add_library(_blazing_app STATIC ${SRCS_APP})
 add_library(_blazing_groups STATIC ${SRCS_GROUPS})
 
 add_library(_blazing INTERFACE)
-add_library(ch_contrib::blazing ALIAS _blazing)
+add_library(ch_contrib::blazingmq ALIAS _blazing)
 
 target_link_libraries(_blazing INTERFACE _blazing_app _blazing_groups)
 
