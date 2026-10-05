@@ -68,8 +68,8 @@ public:
     PulsarConsumerPtr popConsumer(std::chrono::milliseconds timeout);
 
     /// Return a consumer taken with `popConsumer`. A usable consumer goes back to the pool;
-    /// one that hit a terminal receive error is dropped and its slot is recreated by the
-    /// background initialization task.
+    /// an unusable one (see `PulsarConsumer::isUsable`) is closed and its slot is recreated
+    /// by the background initialization task.
     void returnConsumer(PulsarConsumerPtr consumer);
 
 

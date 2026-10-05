@@ -101,6 +101,13 @@ void PulsarConsumer::rollback()
         consumer.negativeAcknowledge(next_message->getMessageId());
     polled_messages.clear();
     next_message = polled_messages.end();
+
+    /// The client keeps one more prefetch buffer below `batchReceive` (the receiver queue), whose
+    /// messages are invisible here. Re-pooling the consumer would leave them attached to it, where
+    /// they could stay stranded or be acknowledged by a later read that never returned them. So the
+    /// storage closes the consumer instead (which puts all its unacknowledged messages, including
+    /// the receiver queue, onto the redelivery path) and recreates the slot (see `returnConsumer`).
+    usable = false;
 }
 
 }

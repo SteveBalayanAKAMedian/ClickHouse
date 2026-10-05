@@ -54,14 +54,14 @@ PulsarSource::~PulsarSource()
     {
         /// If some consumed messages were not acknowledged (an early stop of a direct SELECT
         /// because of LIMIT or an exception, or `pulsar_commit_on_select = 0`), the read was
-        /// aborted: request redelivery of the whole batch, including the prefetched unread tail,
-        /// instead of leaving it attached to the pooled consumer, where a later query could
-        /// acknowledge messages it never returned. After a successful `commit` there is nothing
-        /// uncommitted, and the leftover prefetched tail stays buffered for the next reader.
+        /// aborted: request redelivery of the whole batch, including the messages prefetched by
+        /// the client, instead of leaving it attached to the pooled consumer, where a later query
+        /// could acknowledge messages it never returned. After a successful `commit` there is
+        /// nothing uncommitted, and the leftover prefetched tail stays buffered for the next reader.
         if (consumer->hasUncommitted())
             consumer->rollback();
-        /// A consumer that hit a terminal receive error is dropped and recreated by the storage
-        /// instead of being returned to the pool, so the error does not poison later reads.
+        /// A rolled back consumer, or one that hit a terminal receive error, is closed and recreated
+        /// by the storage instead of being returned to the pool.
         storage.returnConsumer(consumer);
     }
 

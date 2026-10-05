@@ -25,7 +25,8 @@ public:
     /// from these messages have been durably written, to keep at-least-once delivery.
     void commit();
     /// Negatively acknowledge all consumed but uncommitted messages and the prefetched unread
-    /// tail of the current batch, requesting redelivery.
+    /// tail of the current batch, requesting redelivery. The consumer becomes unusable: the
+    /// storage closes it to also redeliver the messages prefetched by the client.
     void rollback();
 
     /// Whether some messages were handed to the parser but not yet acknowledged.
@@ -43,9 +44,9 @@ public:
 
     bool isStalled() const { return polled_messages.empty(); }
 
-    /// A consumer that hit a terminal receive error (e.g. `ResultAlreadyClosed`) or failed to
-    /// acknowledge messages must not be returned to the pool: the storage drops it and recreates
-    /// the slot instead.
+    /// A consumer that hit a terminal receive error (e.g. `ResultAlreadyClosed`), failed to
+    /// acknowledge messages, or was rolled back must not be returned to the pool: the storage
+    /// drops it and recreates the slot instead.
     bool isUsable() const { return usable; }
 
 private:

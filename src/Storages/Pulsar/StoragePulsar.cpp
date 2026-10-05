@@ -387,14 +387,16 @@ void StoragePulsar::returnConsumer(PulsarConsumerPtr consumer)
         return;
     }
 
-    /// The consumer hit a terminal receive error: re-pooling it would make every later cycle pop
-    /// the same dead consumer and fail again. Drop it and let `init_task` recreate the slot.
+    /// The consumer hit a terminal receive error, failed to acknowledge, or was rolled back:
+    /// re-pooling it would make later cycles pop a dead consumer or one with stranded prefetched
+    /// messages. Close it (which redelivers all its unacknowledged messages) and let `init_task`
+    /// recreate the slot.
     {
         std::lock_guard lock{consumers_mutex};
         --created_consumers;
     }
     consumer->consumer.close();
-    LOG_WARNING(log, "Dropped a Pulsar consumer after a terminal receive error; a new one will be created");
+    LOG_DEBUG(log, "Dropped an unusable Pulsar consumer; a new one will be created");
     if (!shutdown_called.load())
         init_task->schedule();
 }
