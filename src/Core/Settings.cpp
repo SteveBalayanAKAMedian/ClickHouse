@@ -140,7 +140,7 @@ Supported values:
 - `polyglot` — transpiles SQL from other dialects (MySQL, PostgreSQL, etc.) into ClickHouse SQL. Requires the experimental setting `allow_experimental_polyglot_dialect`.
 - `promql` — PromQL (Prometheus Query Language) evaluated over a TimeSeries table, configured by the `promql_database`, `promql_table`, and `promql_evaluation_time` settings.
 - `clickhouse_json` — instead of SQL text, the query is interpreted as a JSON AST (the output of `parseQueryToJSON`). The `SET` query is still recognized in plain form so that the dialect can be switched back. Requires the experimental setting `enable_json_ast_dialect`.
-- `logsql` — LogsQL, the log query language of VictoriaLogs, translated into `SELECT` queries over the logs table configured by the `logsql_database` and `logsql_table` settings. Requires the experimental setting `allow_experimental_logsql_dialect`.
+- `logsql` — LogsQL, the log query language of VictoriaLogs, translated into `SELECT` queries over the logs table configured by the `logsql_database` and `logsql_table` settings. Requires the experimental setting `enable_logsql_dialect`.
 - `trino` — Trino SQL: translates Trino syntax (`ARRAY[...]`, `TRY_CAST`, `UNNEST`, ...) and maps Trino function names to their ClickHouse equivalents. Requires the experimental setting `enable_trino_dialect`.
 )", 0)\
     DECLARE(UInt64, min_compress_block_size, 65536, R"(
@@ -5992,6 +5992,19 @@ Possible values:
 - Positive integer (in seconds).
 - 0 — No locking timeout.
 )", 0) \
+    DECLARE(Milliseconds, get_zookeeper_lock_acquire_timeout_ms, DBMS_DEFAULT_LOCK_ACQUIRE_TIMEOUT_SEC * 1000, R"(
+Defines how many milliseconds a Keeper client waits to acquire the corresponding `Context` mutex before failing.
+
+The value is taken from the `Context` that performs the acquisition. A per-query override applies only when the operation uses the query context, such as reads from `system.zookeeper`, `zookeeperSessionUptime`, `SYSTEM RECONNECT ZOOKEEPER`, and query-context auxiliary Keeper access.
+Operations that use a global or background context, including `BACKUP` and `RESTORE` coordination and `Replicated` database activity, use that context's value instead.
+`SYSTEM RELOAD CONFIG` and `SYSTEM RELOAD ASYNCHRONOUS METRICS` are not covered because they use independently serialized reload paths.
+
+Possible values:
+
+- Positive integer (in milliseconds).
+- 0 — No locking timeout.
+)", 0, \
+        {"26.10", 0, DBMS_DEFAULT_LOCK_ACQUIRE_TIMEOUT_SEC * 1000, "New setting"}) \
     DECLARE(Bool, materialize_ttl_after_modify, true, R"(
 Apply TTL for old data, after ALTER MODIFY TTL query
 )", 0) \
@@ -7159,6 +7172,8 @@ For example, if `url_base` is `https://example.com/def/`, then:
 - `data.csv` resolves to `https://example.com/def/data.csv`
 - `/test/data.csv` resolves to `https://example.com/test/data.csv`
 - `//other.com/test/data.csv` resolves to `https://other.com/test/data.csv`
+
+When the relative URL comes from a [named collection](/concepts/features/configuration/server-config/named-collections), resolving it counts as an override of the `url` key of the collection and requires the `SHOW NAMED COLLECTIONS SECRETS` privilege on that collection.
 )", 0, \
         {"26.5", "", "", "New setting to specify the base URL for resolving relative URLs in the url table function and URL table engine."}) \
     DECLARE(String, s3_base, "", R"(
@@ -7169,6 +7184,8 @@ When set, a URL without a scheme is resolved against `s3_base` per RFC 3986, usi
 For example, if `s3_base` is `s3://clickhouse-public-datasets/`, then `s3('hits_compatible/hits.csv')` reads `s3://clickhouse-public-datasets/hits_compatible/hits.csv`.
 
 The base URL can use any form accepted by the `s3` table function, e.g. `s3://bucket/`, `https://bucket.s3.amazonaws.com/` or `https://endpoint/bucket/`.
+
+When the relative URL comes from a [named collection](/concepts/features/configuration/server-config/named-collections), resolving it counts as an override of the `url` key of the collection and requires the `SHOW NAMED COLLECTIONS SECRETS` privilege on that collection.
 )", 0, \
         {"26.8", "", "", "New setting to specify the base URL for resolving relative URLs in the s3 table function and the S3 table engine."}) \
     DECLARE(UInt64, database_replicated_initial_query_timeout_sec, 300, R"(
@@ -8425,6 +8442,30 @@ SETTINGS additional_result_filter = 'x != 2'
     DECLARE(String, workload, "default", R"(
 Name of workload to be used to access resources
 )", 0) \
+    DECLARE(Double, weight, 1.0, R"(
+Base scheduling weight of the query within its workload, used by the `fair` workload scheduler (see the `scheduler` workload setting). Queries with a higher weight receive a proportionally larger share of a time-shared resource (CPU, IO) when they compete inside the same workload. Ignored by the default `fifo` scheduler. A non-positive value (`<= 0`) is meaningless for the fair share and is treated as the default `1.0`.
+)", 0, \
+    {"26.10", 1.0, 1.0, "New query setting: base scheduling weight of a query within its workload, used by the `fair` workload scheduler."}) \
+    DECLARE(Double, weight_lowering_factor, 1.0, R"(
+For the `fair` workload scheduler: once the query crosses any of the `weight_lowering_*` thresholds below, its effective weight is multiplied by this factor once (values in (0, 1) lower the weight, biasing scheduling toward shorter/newer queries). The thresholds do not combine — the first one to trip applies the full lowering. `1.0` disables lowering. The value is clamped to the range `[0, 1]`, so the factor can only ever lower a query's weight, never raise it.
+)", 0, \
+    {"26.10", 1.0, 1.0, "New query setting: factor applied to a query's weight once it crosses a weight-lowering threshold in the `fair` workload scheduler."}) \
+    DECLARE(Double, weight_lowering_age_seconds, 0, R"(
+For the `fair` workload scheduler: once the query has been running (wall-clock) for this many seconds, its weight is lowered by `weight_lowering_factor`. `0` (or any negative value) disables the age threshold.
+)", 0, \
+    {"26.10", 0, 0, "New query setting: wall-clock age threshold after which a query's weight is lowered in the `fair` workload scheduler."}) \
+    DECLARE(Double, weight_lowering_cpu_seconds, 0, R"(
+For the `fair` workload scheduler: once the query has attained this many CPU-seconds, its weight is lowered by `weight_lowering_factor`. Applies to CPU resources. `0` (or any negative value) disables the CPU threshold. Attained CPU is the granted scheduler service, charged when a request is granted rather than as CPU is spent, so it leads actual consumption by at most one quantum (`cpu_slot_quantum_ns`) per active slot. This is only meaningful with CPU slot preemption (`cpu_slot_preemption = 1`, the default); without preemption CPU slots carry a fixed per-slot cost rather than real CPU time, so this threshold — like the other `fair` CPU settings — no longer reflects actual CPU consumption.
+)", 0, \
+    {"26.10", 0, 0, "New query setting: attained CPU-seconds threshold after which a query's weight is lowered in the `fair` workload scheduler."}) \
+    DECLARE(Double, weight_lowering_io_bytes, 0, R"(
+For the `fair` workload scheduler: once the query has attained this many bytes of IO, its weight is lowered by `weight_lowering_factor`. Applies to IO resources. `0` (or any negative value) disables the IO threshold.
+)", 0, \
+    {"26.10", 0, 0, "New query setting: attained IO-bytes threshold after which a query's weight is lowered in the `fair` workload scheduler."}) \
+    DECLARE(Int64, workload_priority, 0, R"(
+Scheduling priority of the query within its workload, used by the `priority` workload scheduler (see the `scheduler` workload setting). Lower value = higher priority; the default `0` is the neutral baseline, a negative value raises the query above the default and a positive value lowers it. Queries of equal priority are served first-come-first-served. Ignored by the other schedulers.
+)", 0, \
+    {"26.10", 0, 0, "New query setting: scheduling priority of a query within its workload, used by the `priority` workload scheduler."}) \
     DECLARE(Milliseconds, workload_admission_timeout_ms, 0, R"(
 The maximum time a query waits to be admitted by workload scheduling before it fails without starting.
 It bounds the combined wait for a query slot (from a `CREATE RESOURCE ... (QUERY)` resource, limited by
@@ -9033,9 +9074,6 @@ a   Tuple(
 Allow to create *MergeTree tables with empty primary key when ORDER BY and PRIMARY KEY not specified
 )", 0, \
         {"25.11", false, true, "Better usability"}) \
-    DECLARE(Bool, allow_named_collection_override_by_default, true, R"(
-Allow named collections' fields override by default.
-)", 0) \
     DECLARE(SQLSecurityType, default_normal_view_sql_security, SQLSecurityType::INVOKER, R"(
 Allows to set default `SQL SECURITY` option while creating a normal view. [More about SQL security](/reference/statements/create/view#sql_security).
 
@@ -9359,7 +9397,8 @@ Uses replicas from cluster_for_parallel_replicas.
 - [distributed_index_analysis_for_non_shared_merge_tree](#distributed_index_analysis_for_non_shared_merge_tree)
 - [distributed_index_analysis_min_parts_to_activate](/reference/settings/merge-tree-settings/distributed-index#distributed_index_analysis_min_parts_to_activate)
 - [distributed_index_analysis_min_indexes_bytes_to_activate](/reference/settings/merge-tree-settings/distributed-index#distributed_index_analysis_min_indexes_bytes_to_activate)
-)", EXPERIMENTAL, \
+)", BETA, \
+        {"26.10", false, false, "Distributed index analysis was moved to Beta."}, \
         {"26.1", false, false, "New experimental setting"}) \
     DECLARE(Bool, distributed_index_analysis_only_on_coordinator, false, R"(
 If enabled, distributed index analysis runs only on the coordinator.
@@ -9402,13 +9441,31 @@ The analyzer is the query analysis and planning infrastructure that has been the
         {"24.8", 1, 1, "Added the alias `enable_analyzer`."}, \
         {"24.3", false, true, "Enable analyzer and planner by default."}) \
     DECLARE(Bool, analyzer_compatibility_join_using_top_level_identifier, false, R"(
-Force to resolve identifier in JOIN USING from projection (for example, in `SELECT a + 1 AS b FROM t1 JOIN t2 USING (b)` join will be performed by `t1.a + 1 = t2.b`, rather then `t1.b = t2.b`). Aliases defined elsewhere in the query are also considered: in the `WITH` clause, on subexpressions inside the SELECT list, or in other clauses (for example, in `WITH a + 1 AS b SELECT count() FROM t1 JOIN t2 USING (b)` and in `SELECT uniqExact(a + 1 AS b) FROM t1 JOIN t2 USING (b)` the join is performed by `t1.a + 1 = t2.b`). When the matching alias is not a top-level alias of the SELECT list, parallel replicas are disabled for the query. For queries sent to remote servers (`Distributed` tables, the `remote` table function), such a query is rejected with an exception only when the identifier cannot be resolved on the remote server at all; if the alias shadows a real column of the left table, the remote server joins by that column instead, so the results may differ from local execution.
+Force to resolve identifier in JOIN USING from projection (for example, in `SELECT a + 1 AS b FROM t1 JOIN t2 USING (b)` join will be performed by `t1.a + 1 = t2.b`, rather then `t1.b = t2.b`). Aliases defined elsewhere in the query are also considered: in the `WITH` clause, on subexpressions inside the SELECT list, or in other clauses (for example, in `WITH a + 1 AS b SELECT count() FROM t1 JOIN t2 USING (b)` and in `SELECT uniqExact(a + 1 AS b) FROM t1 JOIN t2 USING (b)` the join is performed by `t1.a + 1 = t2.b`). In a query with several `JOIN`s only the outermost `JOIN` resolves its `USING` identifier from an alias; an inner `JOIN` resolves it from its left table, as the old analyzer did. When the matching alias is not a top-level alias of the SELECT list, parallel replicas are disabled for the query. For queries sent to remote servers (`Distributed` tables, the `remote` table function), such a query is rejected with an exception only when the identifier cannot be resolved on the remote server at all; if the alias shadows a real column of the left table, the remote server joins by that column instead, so the results may differ from local execution.
 )", 0, \
         {"24.3", false, false, "Force to resolve identifier in JOIN USING from projection"}) \
     DECLARE(Bool, analyzer_compatibility_allow_compound_identifiers_in_unflatten_nested, true, R"(
 Allow to add compound identifiers to nested. This is a compatibility setting because it changes the query result. When disabled, `SELECT a.b.c FROM table ARRAY JOIN a` does not work, and `SELECT a FROM table` does not include `a.b.c` column into `Nested a` result.
     )", 0, \
         {"25.8", false, true, "New setting."}) \
+    DECLARE(Bool, semi_join_include_columns_from_both_sides, true, R"(
+When enabled (the default), `SEMI` JOIN keeps columns from both sides accessible in the joined result, and `SELECT *` returns columns from both sides. This is the legacy ClickHouse behavior.
+When disabled, the analyzer restricts `SEMI` JOIN column access to the preserved side in accordance with the SQL standard.
+For `LEFT SEMI JOIN` only left table columns are accessible, for `RIGHT SEMI JOIN` only right table columns.
+This applies to expressions resolved from the joined result, such as `SELECT`, `PREWHERE`, `WHERE`, `GROUP BY`, `HAVING`, `QUALIFY`, `ORDER BY`, and `LIMIT BY` clauses, including qualified wildcards like `t1.*`.
+An explicit reference to a non-preserved side column raises the `SEMI_ANTI_JOIN_COLUMN_ACCESS_DENIED` exception. This covers qualified references such as `t2.b`, qualified wildcards like `t2.*`, `USING` columns like `d.id`, and fully qualified references like `db.table.column`, and it is enforced even inside statically-dead branches such as `if(false, t2.b, 42)`. An unqualified identifier that does not match any accessible column still falls back to the generic `UNKNOWN_IDENTIFIER` exception.
+The `JOIN ON` expression of the same `JOIN` can access both sides regardless of this setting.
+    )", 0, \
+        {"26.10", true, true, "New setting. Disable it to restrict `SEMI JOIN` column access to the preserved side except in `JOIN ON` expressions"}) \
+    DECLARE(Bool, anti_join_include_columns_from_both_sides, true, R"(
+When enabled (the default), `ANTI` JOIN keeps columns from both sides accessible in the joined result, and `SELECT *` returns columns from both sides. This is the legacy ClickHouse behavior.
+When disabled, the analyzer restricts `ANTI` JOIN column access to the preserved side in accordance with the SQL standard.
+For `LEFT ANTI JOIN` only left table columns are accessible, for `RIGHT ANTI JOIN` only right table columns.
+This applies to expressions resolved from the joined result, such as `SELECT`, `PREWHERE`, `WHERE`, `GROUP BY`, `HAVING`, `QUALIFY`, `ORDER BY`, and `LIMIT BY` clauses, including qualified wildcards like `t1.*`.
+An explicit reference to a non-preserved side column raises the `SEMI_ANTI_JOIN_COLUMN_ACCESS_DENIED` exception. This covers qualified references such as `t2.b`, qualified wildcards like `t2.*`, `USING` columns like `d.id`, and fully qualified references like `db.table.column`, and it is enforced even inside statically-dead branches such as `if(false, t2.b, 42)`. An unqualified identifier that does not match any accessible column still falls back to the generic `UNKNOWN_IDENTIFIER` exception.
+The `JOIN ON` expression of the same `JOIN` can access both sides regardless of this setting.
+    )", 0, \
+        {"26.10", true, true, "New setting. Disable it to restrict `ANTI JOIN` column access to the preserved side except in `JOIN ON` expressions"}) \
     DECLARE(Bool, analyzer_compatibility_allow_non_aggregate_in_having, false, R"(
 When enabled, the analyzer mimics the legacy behavior of moving non-aggregate AND-conjuncts from `HAVING` to `WHERE` instead of raising `NOT_AN_AGGREGATE`. The standard-compliant rejection is the default; this is a migration aid for queries that were silently accepted by the query analysis that ClickHouse used before v24.3. Conjuncts containing aggregate, `grouping`, or non-deterministic functions stay in `HAVING`. If any conjunct contains a window function or a stateful function (for example `rowNumberInBlock`), the rewrite is disabled for the whole `HAVING`, matching the behaviour of that older analysis. The setting is also ignored when `GROUP BY` uses `WITH CUBE`, `WITH ROLLUP`, `WITH TOTALS`, or `GROUPING SETS`.
 )", 0, \
@@ -9993,9 +10050,10 @@ materialized during inserts and background merges instead of rewriting the histo
 Enable transforming the payload of a hash join into a row-major layout.
 )", 0, \
         {"26.9", false, true, "New setting to enable transforming the payload of a hash join into a row-major layout."}) \
-    DECLARE(Double, min_rows_ratio_for_hash_join_row_store, 5.0, R"(
+    DECLARE(Double, min_rows_ratio_for_hash_join_row_store, 3.0, R"(
 Minimum estimated ratio of join output rows to build-side rows to enable transforming hash join payload to row-major. 0 means the transformation is always allowed.
 )", 0, \
+        {"26.10", 5.0, 3.0, "Lowered the minimum estimated ratio of join output rows to build-side rows that enables the hash join row store."}, \
         {"26.9", 5.0, 5.0, "New setting to control the minimum estimated ratio of join output rows to build-side rows to enable transforming hash join payload to row-major. 0 means the transformation is always allowed."}) \
     \
     /* ####################################################### */ \
@@ -10341,12 +10399,12 @@ SET dialect = 'clickhouse_json';
 Source SQL dialect for the polyglot transpiler (e.g. 'sqlite', 'mysql', 'postgresql', 'snowflake', 'duckdb').
 )", EXPERIMENTAL, \
         {"26.3", "", "", "New setting to specify the source SQL dialect for the polyglot transpiler."}) \
-    DECLARE(Bool, allow_experimental_logsql_dialect, false, R"(
+    DECLARE(Bool, enable_logsql_dialect, false, R"(
 Enable LogsQL - the log query language of VictoriaLogs. Queries in this dialect are translated into SELECT queries over the table specified by the `logsql_table` setting.
 
 Usage:
 ```sql
-SET allow_experimental_logsql_dialect = 1;
+SET enable_logsql_dialect = 1;
 SET logsql_table = 'logs';
 SET dialect = 'logsql';
 
@@ -10963,6 +11021,8 @@ Enable experimental table function `eval`.
         {"24.10", 1, 1, "A setting for ClickHouse Cloud"}) \
     MAKE_OBSOLETE(M, Float, text_index_lazy_intersection_density_threshold, 0.2f, \
         {"26.7", 0.2, 0.2, "Renamed from `text_index_density_threshold` (kept as an alias); selects the posting list intersection algorithm in lazy posting list apply mode."}) \
+    MAKE_OBSOLETE(M, Bool, allow_named_collection_override_by_default, true, \
+        {"26.10", true, true, "Obsolete. Overriding named collection keys requires `SHOW NAMED COLLECTIONS SECRETS`."}) \
     MAKE_OBSOLETE(M, Float, text_index_density_threshold, 0.2f, \
         {"26.6", 0.2, 0.2, "New setting for lazy posting list density threshold"}) \
     MAKE_OBSOLETE(M, Bool, use_compact_format_in_distributed_parts_names, true, \
