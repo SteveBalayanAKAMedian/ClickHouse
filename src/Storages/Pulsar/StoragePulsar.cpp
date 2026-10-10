@@ -927,6 +927,7 @@ void registerStoragePulsar(StorageFactory & factory)
     factory.registerStorage(
         "Pulsar",
         creator_fn,
+        SecretArgumentsSpec{},
         StorageFactory::StorageFeatures{
             .supports_settings = true,
             .source_access_type = AccessTypeObjects::Source::PULSAR,
